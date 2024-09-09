@@ -2,18 +2,15 @@
 
 #include <cstdint>
 #include <stdexcept>
-#include <vulkan/vulkan_core.h>
 
-#include "../util/vk_mem_alloc.h"
+#include "vk.h" 
 
 namespace mb {
 
 class ImageBuffer {
 public:
-  ImageBuffer(VkDevice _logical, VmaAllocator _allocator) 
-  : logical(_logical), allocator(_allocator){
-    
-  }
+  ImageBuffer(){}
+  ~ImageBuffer(){clear();}
 
   void createImage(uint32_t width, uint32_t height, uint32_t depth, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) {
     VkImageCreateInfo imageInfo {};
@@ -35,19 +32,22 @@ public:
     allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
     allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-    vmaCreateImage(allocator, &imageInfo, &allocCreateInfo, &image, &allocation, nullptr);
+    vmaCreateImage(vk::allocator, &imageInfo, &allocCreateInfo, &image, &allocation, nullptr);
+  }
+
+  void clear() {
+    if (image) {
+      vmaDestroyImage(vk::allocator, image, allocation);
+    }
   }
 
   void mapMemory(const void* data, const VkDeviceSize size, const uint32_t offset = 0) {
-    if (vmaCopyMemoryToAllocation(allocator, data, allocation, offset, size) != VK_SUCCESS) {
+    if (vmaCopyMemoryToAllocation(vk::allocator, data, allocation, offset, size) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: failed to copy image buffer to allocation");
     }
   }
 
 private:
-  VkDevice logical;
-  VmaAllocator allocator;
-
   VkImage image;
   VmaAllocation allocation;
 };

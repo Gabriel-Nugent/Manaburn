@@ -18,7 +18,7 @@ void Texture::createTextureImage(const std::string filePath) {
 
   const VkDeviceSize imageSize = texWidth * texHeight * 4;
 
-  image = std::make_unique<ImageBuffer>(logical, allocator);
+  image = std::make_unique<ImageBuffer>();
   image->createImage(texWidth, texHeight, 1, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
   image->mapMemory(pixels, imageSize);
 

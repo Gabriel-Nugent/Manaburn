@@ -1,12 +1,13 @@
 #include "descriptors.h"
 
 #include <stdexcept>
-#include <vulkan/vulkan_core.h>
+
+#include "vk.h"
 
 namespace mb {
 
 Descriptors::~Descriptors() {
-  vkDestroyDescriptorPool(logical, pool, nullptr);
+  vkDestroyDescriptorPool(vk::device, pool, nullptr);
 }
 
 void Descriptors::createDescriptorPool(const unsigned int FRAME_COUNT) {
@@ -20,7 +21,7 @@ void Descriptors::createDescriptorPool(const unsigned int FRAME_COUNT) {
   poolInfo.pPoolSizes = &poolSize;
   poolInfo.maxSets = static_cast<uint32_t>(FRAME_COUNT);
 
-  if (vkCreateDescriptorPool(logical, &poolInfo, nullptr, &pool) != VK_SUCCESS) {
+  if (vkCreateDescriptorPool(vk::device, &poolInfo, nullptr, &pool) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: failed to create descriptor pool!");
   }
 }
@@ -34,7 +35,7 @@ std::vector<VkDescriptorSet> Descriptors::createDescriptorSets(const unsigned in
   allocInfo.pSetLayouts = layouts.data();
 
   std::vector<VkDescriptorSet> descriptorSets(FRAME_COUNT);
-  if (vkAllocateDescriptorSets(logical, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+  if (vkAllocateDescriptorSets(vk::device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
     throw std::runtime_error("failed to allocate descriptor sets!");
   }
 
@@ -43,7 +44,7 @@ std::vector<VkDescriptorSet> Descriptors::createDescriptorSets(const unsigned in
 
 namespace DescriptorLayouts {
 
-  VkDescriptorSetLayout createUBOLayout(VkDevice logical) {
+  VkDescriptorSetLayout createUBOLayout() {
     VkDescriptorSetLayoutBinding uboLayoutBinding {};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -57,7 +58,7 @@ namespace DescriptorLayouts {
     layoutInfo.pBindings = &uboLayoutBinding;
 
     VkDescriptorSetLayout descriptorSetLayout;
-    if (vkCreateDescriptorSetLayout(logical, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(vk::device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: failed to create descriptor set layout");
     }
 

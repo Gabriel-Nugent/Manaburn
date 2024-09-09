@@ -1,12 +1,10 @@
 #pragma once 
 
 #include "window.h"
-#include "device.h"
 #include "swapchain.h"
-#include "descriptors.h"
-#include "pipeline_builder.h"
 
 #include "../util/vk_mem_alloc.h"
+#include "../util/types.h"
 
 #include <memory>
 #include <vector>
@@ -15,7 +13,15 @@
 #include <vulkan/vulkan_core.h>
 
 const std::vector<const char*> validationLayers = {
-  "VK_LAYER_KHRONOS_validation"
+  "VK_LAYER_KHRONOS_validation",
+};
+
+/**
+ * @brief Vulkan device extensions required by the app
+ * 
+ */
+const std::vector<const char*> deviceExtensions = {
+  VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
 #ifdef NDEBUG
@@ -30,39 +36,52 @@ namespace mb {
  * @brief Handles all communication between app and Vulkan
  * 
  */
-class VKInterface {
+class vk {
 public:
   // vulkan and sdl handlers
-  std::unique_ptr<Window> window;
-  VkInstance instance;
-  VmaAllocator allocator;
-  VkSurfaceKHR surface;
-  std::shared_ptr<Device> device;
-  std::unique_ptr<Swapchain> swapchain;
-  std::unique_ptr<Descriptors> descriptors;
-  std::unique_ptr<PipelineBuilder> pipelineBuilder;
+  inline static std::unique_ptr<Window> window;
+  inline static VkInstance instance;
+  inline static VmaAllocator allocator;
+  inline static VkSurfaceKHR surface;
+  inline static std::unique_ptr<Swapchain> swapchain;
 
-  VKInterface(){}
-  ~VKInterface();
+  // vulkan device handlers
+  inline static VkPhysicalDevice physicalDevice;
+  inline static VkDevice device;
+  inline static QueueFamilyIndices queueIndices;
+  inline static VkQueue graphicsQueue;
+  inline static VkQueue presentQueue;
 
-  void init(uint32_t width = 900, uint32_t height = 600, const unsigned int FRAME_COUNT = 2);
+  vk(){initialized = false;}
+  ~vk();
+
+  static void init(uint32_t width = 900, uint32_t height = 600, const unsigned int FRAME_COUNT = 2);
 private:
   // interface states
-  bool initialized = false;
-  void terminate();
+  inline static bool initialized;
+  static void terminate();
 
   // VK instance related functions
-  void createInstance();
-  std::vector<const char*> getRequiredExtensions();
-  bool checkValidationLayerSupport();
-  void createAllocator();
+  static void createInstance();
+  static std::vector<const char*> getRequiredExtensions();
+  static bool checkValidationLayerSupport();
+  static void createAllocator();
 
   // other VK handlers
-  void createSurface();
+  static void createSurface();
+
+  // VK device related functions
+  static void createDevice();
+  static void pickPhysicalDevice();
+  static bool isDeviceSuitable(VkPhysicalDevice device);
+  static void getQueueFamilies();
+  static void createLogicalDevice();
+  static std::vector<const char*> getRequiredDeviceExtensions();
+  static void getQueues();
 
   // debug related functions
-  VkDebugUtilsMessengerEXT debugMessenger;
-  void setupDebugMessenger();
+  inline static VkDebugUtilsMessengerEXT debugMessenger;
+  static void setupDebugMessenger();
 
   static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, 
     const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {

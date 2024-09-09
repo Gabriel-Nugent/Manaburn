@@ -3,22 +3,21 @@
 #include <memory>
 #include <string>
 
+#include <vulkan/vulkan_core.h>
+
 #include "../vulkan/image_buffer.h"
 
 namespace mb {
 
 class Texture {
 public:
-  Texture(VkDevice _logical, VmaAllocator _allocator, const std::string filePath)
-  : logical(_logical), allocator(_allocator) {
+  Texture(const std::string filePath) {
     createTextureImage(filePath);
   }
 
   std::unique_ptr<ImageBuffer> image;
    
 private:
-  VkDevice logical;
-  VmaAllocator allocator;
 
   void createTextureImage(const std::string filePath);
 };

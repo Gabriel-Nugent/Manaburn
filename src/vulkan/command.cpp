@@ -1,11 +1,13 @@
 #include "command.h"
+#include "vk.h"
+
 #include <stdexcept>
-#include <vulkan/vulkan_core.h>
+
 
 namespace mb {
   
   Command::~Command() {
-    vkDestroyCommandPool(device->logical, pool, nullptr);
+    vkDestroyCommandPool(vk::device, pool, nullptr);
   }
   
   /**
@@ -25,9 +27,9 @@ namespace mb {
     VkCommandPoolCreateInfo commandPoolInfo {};
     commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    commandPoolInfo.queueFamilyIndex = device->queueIndices.graphicsFamily.value();
+    commandPoolInfo.queueFamilyIndex = vk::queueIndices.graphicsFamily.value();
 
-    if (vkCreateCommandPool(device->logical, &commandPoolInfo, nullptr, &pool) != VK_SUCCESS) {
+    if (vkCreateCommandPool(vk::device, &commandPoolInfo, nullptr, &pool) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: Failed to create command pool");
     }
   }
@@ -43,7 +45,7 @@ namespace mb {
     commandBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     commandBufferInfo.commandBufferCount = 1;
 
-    if (vkAllocateCommandBuffers(device->logical, &commandBufferInfo, &buffer) != VK_SUCCESS) {
+    if (vkAllocateCommandBuffers(vk::device, &commandBufferInfo, &buffer) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: Failed to allocate command buffer");
     }
   }

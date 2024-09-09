@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <stdexcept>
 #include <limits>
 #include <algorithm>
@@ -12,9 +11,9 @@
 
 namespace mb {
 
-Swapchain::Swapchain(const VkInstance _instance, std::shared_ptr<Device> _device, 
-                     const VkSurfaceKHR _surface, SDL_Window* _window) :
-instance(_instance), device(_device), surface(_surface), window(_window) {
+Swapchain::Swapchain(const VkInstance _instance, VkDevice _device, VkPhysicalDevice _physicalDevice, 
+    QueueFamilyIndices _indices, const VkSurfaceKHR _surface, SDL_Window* _window) :
+instance(_instance), device(_device), physicalDevice(_physicalDevice), queueIndices(_indices), surface(_surface), window(_window) {
   getSwapchainDetails();
   chooseSwapchainSettings();
   createSwapchain();
@@ -26,7 +25,7 @@ instance(_instance), device(_device), surface(_surface), window(_window) {
 
 Swapchain::~Swapchain() {
   cleanup();
-  vkDestroyRenderPass(device->logical, renderPass, nullptr);
+  vkDestroyRenderPass(device, renderPass, nullptr);
 }
 
 /**
@@ -34,7 +33,7 @@ Swapchain::~Swapchain() {
  * 
  */
 void Swapchain::recreate() {
-  vkDeviceWaitIdle(device->logical);
+  vkDeviceWaitIdle(device);
 
   cleanup();
 
@@ -51,26 +50,26 @@ void Swapchain::recreate() {
  * 
  */
 void Swapchain::getSwapchainDetails() {
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->physical, surface, &capabilities);
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
 
   uint32_t formatCount;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(device->physical, surface, &formatCount, nullptr);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
   if (formatCount == 0) {
     throw std::runtime_error("[ERROR]: No swapchain formats were found");
   }
   else {
     formats.resize(formatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device->physical, surface, &formatCount, formats.data());
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, formats.data());
   }
 
   uint32_t presentModeCount;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical, surface, &presentModeCount, nullptr);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
   if (presentModeCount == 0) {
     throw std::runtime_error("[ERROR]: No swapchain present modes were found");
   }
   else {
     presentModes.resize(presentModeCount);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device->physical, surface, &presentModeCount, presentModes.data());
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
   }
 }
 
@@ -147,11 +146,11 @@ void Swapchain::createSwapchain() {
   swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
   uint32_t queueFamilyIndices[] = {
-    device->queueIndices.graphicsFamily.value(),
-    device->queueIndices.presentFamily.value()
+    queueIndices.graphicsFamily.value(),
+    queueIndices.presentFamily.value()
   };
 
-  if (device->queueIndices.graphicsFamily != device->queueIndices.presentFamily) {
+  if (queueIndices.graphicsFamily != queueIndices.presentFamily) {
     swapchainInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
     swapchainInfo.queueFamilyIndexCount = 2;
     swapchainInfo.pQueueFamilyIndices = queueFamilyIndices;
@@ -168,7 +167,7 @@ void Swapchain::createSwapchain() {
   swapchainInfo.clipped = VK_TRUE;
   swapchainInfo.oldSwapchain = VK_NULL_HANDLE;
 
-  if (vkCreateSwapchainKHR(device->logical, &swapchainInfo, nullptr, &swapchain) != VK_SUCCESS) {
+  if (vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: failed to create swapchain");
   }
 }
@@ -179,9 +178,9 @@ void Swapchain::createSwapchain() {
  */
 void Swapchain::createImages() {
   uint32_t imageCount;
-  vkGetSwapchainImagesKHR(device->logical, swapchain, &imageCount, nullptr);
+  vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
   images.resize(imageCount);
-  vkGetSwapchainImagesKHR(device->logical, swapchain, &imageCount, images.data());
+  vkGetSwapchainImagesKHR(device, swapchain, &imageCount, images.data());
 }
 
 /**
@@ -208,7 +207,7 @@ void Swapchain::createImageViews() {
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
-    if (vkCreateImageView(device->logical, &viewInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
+    if (vkCreateImageView(device, &viewInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: failed to create image views");
     }
   }
@@ -255,7 +254,7 @@ void Swapchain::createRenderPass() {
   renderPassInfo.dependencyCount = 1;
   renderPassInfo.pDependencies = &dependency;
 
-  if (vkCreateRenderPass(device->logical, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+  if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: Failed to create render pass");
   }
 }
@@ -280,7 +279,7 @@ void Swapchain::createFramebuffers() {
     framebufferInfo.height = swapchainExtent.height;
     framebufferInfo.layers = 1;
 
-    if (vkCreateFramebuffer(device->logical, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
+    if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: failed to create framebuffer");
     }
   }
@@ -292,12 +291,12 @@ void Swapchain::createFramebuffers() {
  */
 void Swapchain::cleanup() {
   for (auto& framebuffer : framebuffers) {
-    vkDestroyFramebuffer(device->logical, framebuffer, nullptr);
+    vkDestroyFramebuffer(device, framebuffer, nullptr);
   }
   for (auto& view : imageViews) {
-    vkDestroyImageView(device->logical, view, nullptr);
+    vkDestroyImageView(device, view, nullptr);
   }
-  vkDestroySwapchainKHR(device->logical, swapchain, nullptr);
+  vkDestroySwapchainKHR(device, swapchain, nullptr);
 }
 
 }

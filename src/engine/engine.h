@@ -1,10 +1,8 @@
 #pragma once
 
-#include "../vulkan/vk_interface.h"
 #include "../vulkan/command.h"
 #include "../vulkan/fence.h"
 #include "../vulkan/semaphore.h"
-#include "../vulkan/uniform_buffer.h"
 #include "../vulkan/descriptors.h"
 
 #include "mesh.h"
@@ -45,8 +43,7 @@ public:
   void cleanup();
 
 private:
-  std::unique_ptr<VKInterface> vk;
-
+  std::unique_ptr<Descriptors> descriptors;
   std::unordered_map<std::string, VkDescriptorSetLayout> descriptorLayouts;
   std::unordered_map<std::string, VkPipelineLayout> pipelineLayouts;
   std::unordered_map<std::string, VkPipeline> pipelines;
@@ -63,7 +60,7 @@ private:
   std::vector<std::unique_ptr<Semaphore>> imageAvailableSemaphores;
   std::vector<std::unique_ptr<Semaphore>> renderFinishedSemaphores;
   std::vector<std::unique_ptr<Fence>> inFlightFences;
-  std::vector<std::unique_ptr<UniformBuffer>> uniformBuffers;
+  std::vector<std::unique_ptr<Buffer>> uniformBuffers;
   std::vector<VkDescriptorSet> descriptorSets;
 
   // for imediate submit
@@ -74,7 +71,6 @@ private:
   void initMeshes();
 
   void drawFrame();
-  void updateUniformBuffer(uint32_t currentImage);
   void recordCommandBuffer(const VkCommandBuffer buffer, const uint32_t imageIndex);
   VkResult submitFrame(const uint32_t currentFrame, const uint32_t imageIndex);
   void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);

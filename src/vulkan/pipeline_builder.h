@@ -9,13 +9,13 @@ namespace mb {
 
 class PipelineBuilder {
 public:
-  PipelineBuilder(VkDevice _logical);
+  PipelineBuilder();
   ~PipelineBuilder();
 
   void clear();
   VkPipeline build(VkRenderPass renderPass);
 
-  VkShaderModule static createShader(std::string shaderFilePath, VkDevice logical);
+  VkShaderModule static createShader(std::string shaderFilePath);
   void addShaders(VkShaderModule vertShader, VkShaderModule fragShader);
   void setVertexInputStateEmpty();
   void setVertexInputState(
@@ -37,18 +37,19 @@ public:
       VkSampleCountFlagBits rasterizationSamples,
       VkPipelineMultisampleStateCreateFlags flags = 0
   );
+  void setMultisamplingNone();
   void setDepthStencilState(
       VkBool32 depthTestEnable,
       VkBool32 depthWriteEnable,
       VkCompareOp depthCompareOp
   );
+  void disableDepthtest();
   void setPipelineLayout(VkPipelineLayout pipelineLayout);
   void disableColorBlending();
   void enableBlendingAdditive();
   void enableAlphaBlend();
 
 private:
-  VkDevice logical;
   VkPipelineLayout layout;
 
   // structs for pipeline creation
@@ -62,7 +63,7 @@ private:
 
   // helper functions
   std::vector<char> static readFile(const std::string& filename);
-  VkShaderModule static createShaderModule(const std::vector<char>& code, VkDevice logical);
+  VkShaderModule static createShaderModule(const std::vector<char>& code);
 };
 
 }

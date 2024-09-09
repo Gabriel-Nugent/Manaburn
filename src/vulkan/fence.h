@@ -1,28 +1,34 @@
 #pragma once
 
 #include <stdexcept>
-#include <vulkan/vulkan_core.h>
+
+#include "vk.h"
 
 namespace mb {
 
 class Fence {
 public:
-  Fence(const VkDevice _logical) : logical(_logical){
+  Fence() {
     VkFenceCreateInfo fenceInfo {};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    if (vkCreateFence(logical, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+    if (vkCreateFence(vk::device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
       throw std::runtime_error("[ERROR]: failed to create fence");
     }
   }
 
   ~Fence() {
-    vkDestroyFence(logical, fence, nullptr);
+    clear();
+  }
+
+  void clear() {
+    if (fence) {
+      vkDestroyFence(vk::device, fence, nullptr);
+    }
   }
 
   VkFence& get() {return fence;}
 
 private:
-  VkDevice logical;
   VkFence fence;
 
 };

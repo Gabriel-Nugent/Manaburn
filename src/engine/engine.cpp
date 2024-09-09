@@ -1,6 +1,8 @@
 #include "engine.h"
 
 #include "../util/types.h"
+#include "../vulkan/vk.h"
+#include "../vulkan/pipeline_builder.h"
 
 #include <SDL_events.h>
 #include <SDL_keycode.h>
@@ -13,6 +15,7 @@
 #include <stdexcept>
 #include <synchapi.h>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <windows.h>
 
@@ -27,8 +30,7 @@ namespace mb {
  * 
  */
 void Engine::init() {
-  vk = std::make_unique<VKInterface>();
-  vk->init();
+  vk::init();
   // initialize frames
   initPipelines();
   initFrames();
@@ -43,7 +45,7 @@ void Engine::run() {
   SDL_Event event;
   bool shouldQuit = false;
 
-  while (!shouldQuit) {
+   while (!shouldQuit) {
     // handle window events
     while (SDL_PollEvent(&event) != 0) {
       switch(event.type) {
@@ -77,7 +79,7 @@ void Engine::run() {
     }
 
     if (framebufferResized) {
-      vk->swapchain->recreate();
+      vk::swapchain->recreate();
       framebufferResized = false;
     }
 
@@ -85,7 +87,7 @@ void Engine::run() {
     drawFrame();
   }
 
-  vkDeviceWaitIdle(vk->device->logical);
+  vkDeviceWaitIdle(vk::device);
   cleanup();
 }
 
@@ -94,26 +96,23 @@ void Engine::run() {
  * 
  */
 void Engine::cleanup() {
-  for (auto& [name, mesh] : meshes) {
-    mesh.clear();
-  }
+  meshes.clear();
   for (int i = 0; i < FRAME_COUNT; i++) {
     cmdBuffers[i].reset();
     imageAvailableSemaphores[i].reset();
     renderFinishedSemaphores[i].reset();
     inFlightFences[i].reset();
-    uniformBuffers[i].reset();
   }
+  descriptors.reset();
   for (const auto& [name, pipeline] : pipelines) {
-    vkDestroyPipeline(vk->device->logical, pipeline, nullptr);
+    vkDestroyPipeline(vk::device, pipeline, nullptr);
   }
   for (const auto& [name, layout] : descriptorLayouts) {
-    vkDestroyDescriptorSetLayout(vk->device->logical, layout, nullptr);
+    vkDestroyDescriptorSetLayout(vk::device, layout, nullptr);
   }
   for (const auto& [name, layout] : pipelineLayouts) {
-    vkDestroyPipelineLayout(vk->device->logical, layout, nullptr);
+    vkDestroyPipelineLayout(vk::device, layout, nullptr);
   }
-  vk.reset();
 }
 
 /**
@@ -121,38 +120,36 @@ void Engine::cleanup() {
  * 
  */
 void Engine::initPipelines() {
-  descriptorLayouts["ubo-object"] = DescriptorLayouts::createUBOLayout(vk->device->logical);
-
   VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutInfo.setLayoutCount = 1;
-  pipelineLayoutInfo.pSetLayouts = &descriptorLayouts["ubo-object"];
+  pipelineLayoutInfo.setLayoutCount = 0;
 
   VkPipelineLayout layout;
-  if (vkCreatePipelineLayout(vk->device->logical, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS) {
+  if (vkCreatePipelineLayout(vk::device, &pipelineLayoutInfo, nullptr, &layout) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: failed to create pipeline layout");
   }
   pipelineLayouts["empty-layout"] = layout;
 
-  auto vertShader = PipelineBuilder::createShader("shaders/basic_shader.vert.spv", vk->device->logical);
-  auto fragShader = PipelineBuilder::createShader("shaders/basic_shader.frag.spv", vk->device->logical);
+  auto vertShader = PipelineBuilder::createShader("shaders/triangle_shader.vert.spv");
+  auto fragShader = PipelineBuilder::createShader("shaders/basic_shader.frag.spv");
 
   auto bindingDescriptions = Vertex::getBindingDescriptions();
   auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
-  PipelineBuilder builder(vk->device->logical);
+  PipelineBuilder builder;
   builder.setPipelineLayout(layout);
   builder.addShaders(vertShader,fragShader);
-  builder.setVertexInputState(bindingDescriptions, attributeDescriptions);
+  //builder.setVertexInputState(bindingDescriptions, attributeDescriptions);
   builder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-  builder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
-  builder.setMultisampleState(VK_SAMPLE_COUNT_1_BIT);
+  builder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+  builder.setMultisamplingNone();
   builder.disableColorBlending();
-  auto pipeline = builder.build(vk->swapchain->renderPass);
+  builder.disableDepthtest();
+  auto pipeline = builder.build(vk::swapchain->renderPass);
   pipelines["basic-pipeline"] = pipeline;
 
-  vkDestroyShaderModule(vk->device->logical, vertShader, nullptr);
-  vkDestroyShaderModule(vk->device->logical, fragShader, nullptr);
+  vkDestroyShaderModule(vk::device, vertShader, nullptr);
+  vkDestroyShaderModule(vk::device, fragShader, nullptr);
 }
 
 /**
@@ -161,40 +158,15 @@ void Engine::initPipelines() {
  */
 void Engine::initFrames() {
   for (int i = 0; i < FRAME_COUNT; i++) {
-    cmdBuffers.push_back(std::make_unique<Command>(vk->device));
-    imageAvailableSemaphores.push_back(std::make_unique<Semaphore>(vk->device->logical));
-    renderFinishedSemaphores.push_back(std::make_unique<Semaphore>(vk->device->logical));
-    inFlightFences.push_back(std::make_unique<Fence>(vk->device->logical));
-    uniformBuffers.push_back(std::make_unique<UniformBuffer>(vk->device->logical, vk->allocator));
+    cmdBuffers.push_back(std::make_unique<Command>());
+    imageAvailableSemaphores.push_back(std::make_unique<Semaphore>());
+    renderFinishedSemaphores.push_back(std::make_unique<Semaphore>());
+    inFlightFences.push_back(std::make_unique<Fence>());
   }
+
   // immediate submit
-  uploadContext.uploadFence = std::make_unique<Fence>(vk->device->logical);
-  uploadContext.cmd = std::make_unique<Command>(vk->device);
-
-  // initalize descriptors
-  descriptorSets = vk->descriptors->createDescriptorSets(FRAME_COUNT, descriptorLayouts["ubo-object"]);
-
-  for (size_t i = 0; i < FRAME_COUNT; i++) {
-    VkDescriptorBufferInfo bufferInfo {};
-    bufferInfo.buffer = uniformBuffers[i]->buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(UniformBufferObject);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSets[i];
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-
-    descriptorWrite.pBufferInfo = &bufferInfo;
-    descriptorWrite.pImageInfo = nullptr; // Optional
-    descriptorWrite.pTexelBufferView = nullptr; // Optional
-
-    vkUpdateDescriptorSets(vk->device->logical, 1, &descriptorWrite, 0, nullptr);
-  }
+  uploadContext.uploadFence = std::make_unique<Fence>();
+  uploadContext.cmd = std::make_unique<Command>();
 }
 
 /**
@@ -202,19 +174,20 @@ void Engine::initFrames() {
  * 
  */
 void Engine::initMeshes() {
-  const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+
+  std::vector<Vertex> vertices = {
+    {{ 1.f, 1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
+    {{-1.f, 1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
+    {{ 0.f,-1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
   };
 
-  std::vector<uint32_t> indices ={
-    0, 1, 2, 2, 3, 0
-  };
+  meshes.emplace(
+    std::piecewise_construct,
+    std::forward_as_tuple("triangle"), 
+    std::forward_as_tuple(vertices)
+  );
 
-  meshes.emplace("rectangle_mesh", Mesh(vk->device->logical,vk->allocator, vertices));
-  meshes["rectangle_mesh"].setIndexBuffer(indices);
+  uploadMesh(meshes["triangle"]);
 }
 
 /**
@@ -223,10 +196,10 @@ void Engine::initMeshes() {
  */
 void Engine::drawFrame() {
   // wait for gpu to render last frame
-  vkWaitForFences(vk->device->logical, 1, &inFlightFences[currentFrame]->get(), true, 1000000000);
+  vkWaitForFences(vk::device, 1, &inFlightFences[currentFrame]->get(), true, 1000000000);
 
   uint32_t imageIndex;
-  VkResult result = vkAcquireNextImageKHR(vk->device->logical, vk->swapchain->get(), UINT64_MAX, imageAvailableSemaphores[currentFrame]->get(), VK_NULL_HANDLE, &imageIndex);
+  VkResult result = vkAcquireNextImageKHR(vk::device, vk::swapchain->get(), UINT64_MAX, imageAvailableSemaphores[currentFrame]->get(), VK_NULL_HANDLE, &imageIndex);
   // check for out of date swapchain
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
     framebufferResized = true;
@@ -236,16 +209,17 @@ void Engine::drawFrame() {
     throw std::runtime_error("[ERROR]: failed to acquire swapchain image");
   }
  
-  vkResetFences(vk->device->logical, 1, &inFlightFences[currentFrame]->get());
+  vkResetFences(vk::device, 1, &inFlightFences[currentFrame]->get());
 
   // reset command buffer to begin recording again
   vkResetCommandBuffer(cmdBuffers[currentFrame]->buffer, 0);
 
   // update descriptor sets
-  updateUniformBuffer(currentFrame);
+  //updateUniformBuffer(currentFrame);
 
   recordCommandBuffer(cmdBuffers[currentFrame]->buffer, imageIndex);
 
+  
   result = submitFrame(currentFrame, imageIndex);
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -255,21 +229,6 @@ void Engine::drawFrame() {
   }
 
   currentFrame = (currentFrame + 1) % FRAME_COUNT;
-}
-
-void Engine::updateUniformBuffer(uint32_t currentImage) {
-  static auto startTime = std::chrono::high_resolution_clock::now();
-
-  auto currentTime = std::chrono::high_resolution_clock::now();
-  float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-  UniformBufferObject ubo{};
-  ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.proj = glm::perspective(glm::radians(45.0f), vk->swapchain->swapchainExtent.height / (float) vk->swapchain->swapchainExtent.height, 0.1f, 10.0f);
-  ubo.proj[1][1] *= -1;
-
-  uniformBuffers[currentImage]->mapMemory(ubo);
 }
 
 /**
@@ -290,10 +249,10 @@ void Engine::recordCommandBuffer(const VkCommandBuffer buffer, const uint32_t im
 
   VkRenderPassBeginInfo renderPassInfo {};
   renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-  renderPassInfo.renderPass = vk->swapchain->renderPass;
-  renderPassInfo.framebuffer = vk->swapchain->framebuffers[imageIndex];
+  renderPassInfo.renderPass = vk::swapchain->renderPass;
+  renderPassInfo.framebuffer = vk::swapchain->framebuffers[imageIndex];
   renderPassInfo.renderArea.offset = {0,0};
-  renderPassInfo.renderArea.extent = vk->swapchain->swapchainExtent;
+  renderPassInfo.renderArea.extent = vk::swapchain->swapchainExtent;
 
   VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
   renderPassInfo.clearValueCount = 1;
@@ -306,24 +265,25 @@ void Engine::recordCommandBuffer(const VkCommandBuffer buffer, const uint32_t im
   VkViewport viewport {};
   viewport.x = 0.0f;
   viewport.y = 0.0f;
-  viewport.width = static_cast<float>(vk->swapchain->swapchainExtent.width);
-  viewport.height = static_cast<float>(vk->swapchain->swapchainExtent.height);
+  viewport.width = static_cast<float>(vk::swapchain->swapchainExtent.width);
+  viewport.height = static_cast<float>(vk::swapchain->swapchainExtent.height);
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
   vkCmdSetViewport(buffer, 0, 1, &viewport);
 
   VkRect2D scissor{};
   scissor.offset = {0, 0};
-  scissor.extent = vk->swapchain->swapchainExtent;
+  scissor.extent = vk::swapchain->swapchainExtent;
   vkCmdSetScissor(buffer, 0, 1, &scissor);
 
-  VkBuffer vertexBuffers[] = {meshes["rectangle_mesh"].getVertexBuffer()};
-  VkDeviceSize offsets[] = {0};
-  vkCmdBindVertexBuffers(buffer, 0, 1, vertexBuffers, offsets);
-  vkCmdBindIndexBuffer(buffer, meshes["rectangle_mesh"].getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-  vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts["empty-layout"], 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+  vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines["basic-pipeline"]);
 
-  vkCmdDrawIndexed(buffer, meshes["rectangle_mesh"].indexBufferSize(), 1, 0, 0, 0);
+  // VkDeviceSize offset = 0;
+  // vkCmdBindVertexBuffers(buffer, 0, 1, &meshes["triangle"].vertexBuffer.buffer, &offset);
+
+  // vkCmdDraw(buffer, meshes["triangle"].vertexCount(), 1, 0, 0);
+
+  vkCmdDraw(buffer, 3, 1, 0, 0);
 
   vkCmdEndRenderPass(buffer);
 
@@ -349,7 +309,7 @@ VkResult Engine::submitFrame(const uint32_t currentFrame, const uint32_t imageIn
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = signalSemaphores;
 
-  if (vkQueueSubmit(vk->device->graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]->get()) != VK_SUCCESS) {
+  if (vkQueueSubmit(vk::graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]->get()) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: Failed to submit draw command buffer!");
   }
 
@@ -359,12 +319,12 @@ VkResult Engine::submitFrame(const uint32_t currentFrame, const uint32_t imageIn
   presentInfo.waitSemaphoreCount = 1;
   presentInfo.pWaitSemaphores = signalSemaphores;
 
-  VkSwapchainKHR swapchains[] = {vk->swapchain->get()};
+  VkSwapchainKHR swapchains[] = {vk::swapchain->get()};
   presentInfo.swapchainCount = 1;
   presentInfo.pSwapchains = swapchains;
   presentInfo.pImageIndices = &imageIndex;
 
-  return vkQueuePresentKHR(vk->device->presentQueue, &presentInfo);
+  return vkQueuePresentKHR(vk::presentQueue, &presentInfo);
 }
 
 void Engine::immediateSubmit(std::function<void(VkCommandBuffer)>&& function) {
@@ -398,40 +358,27 @@ void Engine::immediateSubmit(std::function<void(VkCommandBuffer)>&& function) {
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
 
-  if (vkQueueSubmit(vk->device->graphicsQueue, 1, &submitInfo, uploadContext.uploadFence->get()) != VK_SUCCESS) {
+  if (vkQueueSubmit(vk::graphicsQueue, 1, &submitInfo, uploadContext.uploadFence->get()) != VK_SUCCESS) {
     throw std::runtime_error("{ERROR]: submit command buffer");
   }
 
-  vkWaitForFences(vk->device->logical, 1, &uploadContext.uploadFence->get(), true, 9999999999);
-	vkResetFences(vk->device->logical, 1, &uploadContext.uploadFence->get());
+  vkWaitForFences(vk::device, 1, &uploadContext.uploadFence->get(), true, 9999999999);
+	vkResetFences(vk::device, 1, &uploadContext.uploadFence->get());
 
-  vkResetCommandPool(vk->device->logical, uploadContext.cmd->pool, 0);
+  vkResetCommandPool(vk::device, uploadContext.cmd->pool, 0);
 }
 
 void Engine::uploadMesh(Mesh& mesh) {
-  const size_t bufferSize = mesh.size() * sizeof(Vertex);
-
-  VkBufferCreateInfo stagingBufferInfo {};
-  stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  stagingBufferInfo.pNext = nullptr;
-  stagingBufferInfo.size = bufferSize;
-	stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
-  VmaAllocationCreateInfo vmaAllocInfo {};
-  vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-
-  VkBuffer stagingBuffer;
-  VmaAllocation stagingAllocation;
-
-  if (vmaCreateBuffer(vk->allocator, &stagingBufferInfo, &vmaAllocInfo, &stagingBuffer, &stagingAllocation, nullptr) != VK_SUCCESS) {
-    throw std::runtime_error("[ERROR]: failed to create staging buffer");
-  }
-
-  if (vmaCopyMemoryToAllocation(vk->allocator, &mesh.vertices, stagingAllocation, 0, bufferSize) != VK_SUCCESS) {
-    throw std::runtime_error("[ERROR]: failed to copy memory to allocation");
-  }
-
   
+  mesh.vertexBuffer.allocateBuffer(
+    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+    VMA_MEMORY_USAGE_CPU_TO_GPU, 
+    0, 
+    mesh.size()
+  );
+
+  mesh.copyToAllocation();
+
 }
 
 }

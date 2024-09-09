@@ -1,13 +1,12 @@
 #pragma once
 
-#include "device.h"
-
 #include <vector>
-#include <memory>
 
 #include <SDL_video.h>
 #include <vulkan/vulkan_core.h>
 #include <SDL_vulkan.h>
+
+#include "../util/types.h"
 
 namespace mb {
 
@@ -17,8 +16,8 @@ namespace mb {
  */
 class Swapchain {
 public:
-  Swapchain(const VkInstance _instance, std::shared_ptr<Device> _device, 
-            const VkSurfaceKHR _surface, SDL_Window* _window);
+  Swapchain(const VkInstance _instance, VkDevice _device, VkPhysicalDevice _physicalDevice, 
+    QueueFamilyIndices _indices, const VkSurfaceKHR _surface, SDL_Window* _window);
   ~Swapchain();
 
   VkSwapchainKHR get() {return swapchain;}
@@ -38,8 +37,10 @@ public:
 private:
   // vulkan handlers initialized in other classes
   const VkInstance instance;
-  std::shared_ptr<Device> device;
+  const VkPhysicalDevice physicalDevice;
+  const VkDevice device;
   const VkSurfaceKHR surface;
+  QueueFamilyIndices queueIndices;
   SDL_Window* window;
 
   // handle for swapchain

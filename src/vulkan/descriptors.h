@@ -8,7 +8,7 @@ namespace mb {
 
 class Descriptors {
 public:
-  Descriptors(VkDevice _logical, const unsigned int FRAME_COUNT = 2) : logical(_logical) {
+  Descriptors(const unsigned int FRAME_COUNT = 2) {
     createDescriptorPool(FRAME_COUNT);
   }
 
@@ -17,7 +17,6 @@ public:
   std::vector<VkDescriptorSet> createDescriptorSets(const unsigned int FRAME_COUNT, VkDescriptorSetLayout layout);
 
 private:
-  VkDevice logical;
   VkDescriptorPool pool;
 
   void createDescriptorPool(const unsigned int FRAME_COUNT);
@@ -25,7 +24,7 @@ private:
 
 namespace DescriptorLayouts {
 
-  VkDescriptorSetLayout createUBOLayout(VkDevice logical);
+  VkDescriptorSetLayout createUBOLayout();
 
 }
 

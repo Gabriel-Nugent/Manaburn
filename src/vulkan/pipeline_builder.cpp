@@ -1,14 +1,13 @@
 #include "pipeline_builder.h"
+#include "vk.h"
 
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
 
-#include <vulkan/vulkan_core.h>
-
 namespace mb {
 
-PipelineBuilder::PipelineBuilder(VkDevice _logical) : logical(_logical) {
+PipelineBuilder::PipelineBuilder() {
   clear();
 }
 
@@ -36,9 +35,9 @@ void PipelineBuilder::clear() {
  * @param shaderFilePath : path to the shader file
  * @return VkShaderModule : the newly create shader module
  */
-VkShaderModule PipelineBuilder::createShader(std::string shaderFilePath, VkDevice logical) {
+VkShaderModule PipelineBuilder::createShader(std::string shaderFilePath) {
   auto shaderData = readFile(shaderFilePath);
-  return createShaderModule(shaderData, logical);
+  return createShaderModule(shaderData);
 }
 
 /**
@@ -86,7 +85,7 @@ VkPipeline PipelineBuilder::build(VkRenderPass renderPass) {
   pipelineInfo.renderPass = renderPass;
 
   VkPipeline pipeline;
-  if (vkCreateGraphicsPipelines(logical, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
+  if (vkCreateGraphicsPipelines(vk::device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: Failed to create graphics pipeline");
   }
 
@@ -191,6 +190,17 @@ void PipelineBuilder::setMultisampleState(
   mutlisampleInfo.flags = flags;
 }
 
+void PipelineBuilder::setMultisamplingNone() {
+  mutlisampleInfo.sampleShadingEnable = VK_FALSE;
+  // multisampling defaulted to no multisampling (1 sample per pixel)
+  mutlisampleInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  mutlisampleInfo.minSampleShading = 1.0f;
+  mutlisampleInfo.pSampleMask = nullptr;
+  // no alpha to coverage either
+  mutlisampleInfo.alphaToCoverageEnable = VK_FALSE;
+  mutlisampleInfo.alphaToOneEnable = VK_FALSE;
+}
+
 /**
  * @brief sets the properties for the pipeline's 
  * 
@@ -207,6 +217,18 @@ void PipelineBuilder::setDepthStencilState(
   depthStencilInfo.depthWriteEnable = depthWriteEnable;
   depthStencilInfo.depthCompareOp = depthCompareOp;
   depthStencilInfo.back.compareOp = VK_COMPARE_OP_ALWAYS;
+}
+
+void PipelineBuilder::disableDepthtest() {
+  depthStencilInfo.depthTestEnable = VK_FALSE;
+  depthStencilInfo.depthWriteEnable = VK_FALSE;
+  depthStencilInfo.depthCompareOp = VK_COMPARE_OP_NEVER;
+  depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
+  depthStencilInfo.stencilTestEnable = VK_FALSE;
+  depthStencilInfo.front = {};
+  depthStencilInfo.back = {};
+  depthStencilInfo.minDepthBounds = 0.f;
+  depthStencilInfo.maxDepthBounds = 1.f;
 }
 
 /**
@@ -287,14 +309,14 @@ std::vector<char> PipelineBuilder::readFile(const std::string& filename) {
  * @param code : data buffer of shader file
  * @return VkShaderModule 
  */
-VkShaderModule PipelineBuilder::createShaderModule(const std::vector<char>& code, VkDevice logical) {
+VkShaderModule PipelineBuilder::createShaderModule(const std::vector<char>& code) {
   VkShaderModuleCreateInfo moduleInfo{};
   moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   moduleInfo.codeSize = code.size();
   moduleInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
   VkShaderModule shaderModule;
-  if (vkCreateShaderModule(logical, &moduleInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+  if (vkCreateShaderModule(vk::device, &moduleInfo, nullptr, &shaderModule) != VK_SUCCESS) {
     throw std::runtime_error("[ERROR]: Failed to create shader module");
   }
 
