@@ -15,11 +15,11 @@ namespace mb {
 class Mesh {
 public:
   Mesh() {}
-  Mesh(std::vector<Vertex> vertices) : vertices(vertices) {} 
+  Mesh(std::vector<Vertex>& vertices) : vertices(vertices) {} 
 
   uint32_t size() {return vertices.size() * sizeof(Vertex);}
   uint32_t vertexCount() {return vertices.size();}
-  void copyToAllocation() {vertexBuffer.copyMemoryToAllocation(&vertices, size());}
+  void copyToAllocation() {vertexBuffer.copyMemoryToAllocation(vertices.data(), size());}
 
   Buffer vertexBuffer;
 

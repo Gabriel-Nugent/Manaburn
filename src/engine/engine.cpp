@@ -130,7 +130,7 @@ void Engine::initPipelines() {
   }
   pipelineLayouts["empty-layout"] = layout;
 
-  auto vertShader = PipelineBuilder::createShader("shaders/triangle_shader.vert.spv");
+  auto vertShader = PipelineBuilder::createShader("shaders/basic_shader.vert.spv");
   auto fragShader = PipelineBuilder::createShader("shaders/basic_shader.frag.spv");
 
   auto bindingDescriptions = Vertex::getBindingDescriptions();
@@ -139,7 +139,7 @@ void Engine::initPipelines() {
   PipelineBuilder builder;
   builder.setPipelineLayout(layout);
   builder.addShaders(vertShader,fragShader);
-  //builder.setVertexInputState(bindingDescriptions, attributeDescriptions);
+  builder.setVertexInputState(bindingDescriptions, attributeDescriptions);
   builder.setInputAssemblyState(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   builder.setRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
   builder.setMultisamplingNone();
@@ -176,17 +176,12 @@ void Engine::initFrames() {
 void Engine::initMeshes() {
 
   std::vector<Vertex> vertices = {
-    {{ 1.f, 1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
+    {{ 1.f, 1.f, 0.0f }, {}, { 1.f, 0.0f, 0.0f }},
     {{-1.f, 1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
-    {{ 0.f,-1.f, 0.0f }, {}, { 0.f, 1.f, 0.0f }},
+    {{ 0.f,-1.f, 0.0f }, {}, { 0.f, 0.0f, 1.0f }},
   };
 
-  meshes.emplace(
-    std::piecewise_construct,
-    std::forward_as_tuple("triangle"), 
-    std::forward_as_tuple(vertices)
-  );
-
+  meshes["triangle"] = std::make_shared<Mesh>(vertices);
   uploadMesh(meshes["triangle"]);
 }
 
@@ -278,12 +273,12 @@ void Engine::recordCommandBuffer(const VkCommandBuffer buffer, const uint32_t im
 
   vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines["basic-pipeline"]);
 
-  // VkDeviceSize offset = 0;
-  // vkCmdBindVertexBuffers(buffer, 0, 1, &meshes["triangle"].vertexBuffer.buffer, &offset);
+  VkDeviceSize offset = 0;
+  vkCmdBindVertexBuffers(buffer, 0, 1, &meshes["triangle"]->vertexBuffer.buffer, &offset);
 
-  // vkCmdDraw(buffer, meshes["triangle"].vertexCount(), 1, 0, 0);
+  vkCmdDraw(buffer, meshes["triangle"]->vertexCount(), 1, 0, 0);
 
-  vkCmdDraw(buffer, 3, 1, 0, 0);
+  // vkCmdDraw(buffer, 3, 1, 0, 0);
 
   vkCmdEndRenderPass(buffer);
 
@@ -368,16 +363,16 @@ void Engine::immediateSubmit(std::function<void(VkCommandBuffer)>&& function) {
   vkResetCommandPool(vk::device, uploadContext.cmd->pool, 0);
 }
 
-void Engine::uploadMesh(Mesh& mesh) {
+void Engine::uploadMesh(std::shared_ptr<Mesh> mesh) {
   
-  mesh.vertexBuffer.allocateBuffer(
+  mesh->vertexBuffer.allocateBuffer(
     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
     VMA_MEMORY_USAGE_CPU_TO_GPU, 
     0, 
-    mesh.size()
+    mesh->size()
   );
 
-  mesh.copyToAllocation();
+  mesh->copyToAllocation();
 
 }
 

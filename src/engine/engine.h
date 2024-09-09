@@ -47,7 +47,7 @@ private:
   std::unordered_map<std::string, VkDescriptorSetLayout> descriptorLayouts;
   std::unordered_map<std::string, VkPipelineLayout> pipelineLayouts;
   std::unordered_map<std::string, VkPipeline> pipelines;
-  std::unordered_map<std::string, Mesh> meshes;
+  std::unordered_map<std::string, std::shared_ptr<Mesh>> meshes;
   std::unordered_map<std::string, std::unique_ptr<Texture>>  texures;
 
   // engine states
@@ -74,7 +74,7 @@ private:
   void recordCommandBuffer(const VkCommandBuffer buffer, const uint32_t imageIndex);
   VkResult submitFrame(const uint32_t currentFrame, const uint32_t imageIndex);
   void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
-  void uploadMesh(Mesh& mesh);
+  void uploadMesh(std::shared_ptr<Mesh> mesh);
 };
 
 }
